@@ -115,5 +115,5 @@ func countCharacters(input []byte) (int, error) {
 }
 
 func countBytes(input []byte) int {
-	return 0
+	return len(input)
 }

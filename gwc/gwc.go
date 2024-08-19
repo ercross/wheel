@@ -85,8 +85,33 @@ func countLines(input []byte) int {
 	return count
 }
 
-func countCharacters(input []byte) int {
-	return 0
+// countCharacters counts the number of UTF-8 encoded characters
+// (including but not limited to whitespaces, newline, tab, etc.) in input.
+//
+// countCharacters return error if it encounters a character that is not UTF8 encoded
+func countCharacters(input []byte) (int, error) {
+
+	if len(input) == 0 {
+		return 0, nil
+	}
+
+	// make a copy of input to avoid permanently modifying input
+	copied := make([]byte, len(input))
+	copy(copied, input)
+
+	count := 0
+
+	for len(copied) > 0 {
+		r, runeSize := utf8.DecodeRune(copied)
+		// check for invalid rune
+		if r == utf8.RuneError && runeSize == 1 {
+			return 0, errInvalidInput
+		}
+		copied = copied[runeSize:]
+		count++
+	}
+
+	return count, nil
 }
 
 func countBytes(input []byte) int {

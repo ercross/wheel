@@ -10,6 +10,30 @@ func TestCountLines(t *testing.T) {
 	}
 }
 
+func TestCountCharacters(t *testing.T) {
+	t.Run("With Chinese Characters", func(t *testing.T) {
+		input := []byte("Hello, 世界!")
+		count, err := countCharacters(input)
+		if err != nil {
+			t.Error(err)
+		}
+		if count != 10 {
+			t.Errorf("count should be 10, got %d", count)
+		}
+	})
+
+	t.Run("With Emoji Characters", func(t *testing.T) {
+		input := []byte("😊🌍🌟")
+		count, err := countCharacters(input)
+		if err != nil {
+			t.Error(err)
+		}
+		if count != 3 {
+			t.Errorf("count should be 3, got %d", count)
+		}
+	})
+}
+
 func BenchmarkCountWords(b *testing.B) {
 	b.Run("SmallInput", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {

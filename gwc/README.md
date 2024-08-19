@@ -1,6 +1,7 @@
 # gwc
 
-gwc (short for `go wc`) is an implementation of the Linux commandline program `wc` in Golang. 
+gwc (short for `go wc`) is an implementation of the Linux commandline program `wc` in Golang.
+A character is represented as a `rune` in Go. Hence, this implementation makes of rune extensively
 
 ### Features (as copied with little modifications from terminal command `man wc`)
 wc – word, line, character, and byte count
@@ -13,12 +14,15 @@ standard output.
   by a ⟨newline⟩ character.  Characters beyond the final ⟨newline⟩
   character will not be included in the line count.
 
+- A character is the smallest unit of human-readable text in a string. 
+  It represents a single symbol, such as a letter, number, punctuation mark, or special character including whitespaces
+
 - A word is defined as a string of characters delimited by white space
   characters.  White space characters are the set of characters for which
   the iswspace(3) function returns true.
 
-- If more than one input file is
-  specified, a line of cumulative counts for all the files is displayed on
+- If more than one input file is specified, 
+  a line of cumulative counts for all the files is displayed on
   a separate line after the output for the last file.
 
 ### Additional Feature

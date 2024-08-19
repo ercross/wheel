@@ -50,5 +50,13 @@ byte, and file name.  The default action is equivalent to specifying the
 - If no files are specified, the standard input is used and no file name is
 displayed.  The prompt will accept input until receiving EOF, or [^D] in most environments.
 
-- File or input should contain only UTF-8 encoded character set 
+- File or input should contain only UTF-8 encoded character set
+
+### Limitations
+- OS support (Non-Unix): `gwc` has not been tested on non-unix based OS (e.g., Windows) 
+  and might not function as expected on such platform
+- OS support (pre-OS X): This program may not work properly on older versions of Mac OS (before OS X) because
+  of some character implementation differences in pre-OS X and modern OS X. 
+  For example, pre-OS X used a single carriage return (CR) character to represent a newline,
+  ASCII code \r, with a value of 0x0D while modern OS X use /n in alignment with Linux-based OS 
 

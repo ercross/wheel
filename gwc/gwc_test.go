@@ -2,6 +2,14 @@ package main
 
 import "testing"
 
+func TestCountLines(t *testing.T) {
+	input := []byte("  Hello there,\n   World!\n  This is a test.\n \n ")
+	count := countLines(input)
+	if count != 4 {
+		t.Errorf("count should be 4, got %d", count)
+	}
+}
+
 func BenchmarkCountWords(b *testing.B) {
 	b.Run("SmallInput", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {

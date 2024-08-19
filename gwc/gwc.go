@@ -61,8 +61,28 @@ func countWords(input []byte) (int, error) {
 	return count, nil
 }
 
+// countLines basically counts the number of unix newline character found in input.
+// This implies that if input contains no other characters
+// except the unix newline character, countLines returns a non-zero result
 func countLines(input []byte) int {
-	return 0
+	if len(input) == 0 {
+		return 0
+	}
+
+	// make a copy of input to avoid permanently modifying input
+	copied := make([]byte, len(input))
+	copy(copied, input)
+
+	count := 0
+	var newlineCharacter byte = '\n'
+
+	for _, c := range copied {
+		if c == newlineCharacter {
+			count++
+		}
+	}
+
+	return count
 }
 
 func countCharacters(input []byte) int {

@@ -1,6 +1,27 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
+
+func TestRun(t *testing.T) {
+	filename := "./test-file.txt"
+	err := generateTextFile(filename)
+	if err != nil {
+		t.Errorf("failed to generate file: %v", err)
+	}
+
+	args := []string{"-cw", filename}
+	r, err := run(args)
+	if err != nil {
+		t.Errorf("run error: %v", err)
+	}
+
+	if r.numberOfWords != 10_000_000 {
+		t.Errorf("wrong number of words: expected 10,000,000 got %d", r.numberOfWords)
+	}
+}
 
 func TestCountLines(t *testing.T) {
 	input := []byte("  Hello there,\n   World!\n  This is a test.\n \n ")
@@ -46,7 +67,7 @@ func BenchmarkCountWords(b *testing.B) {
 
 	b.Run("LargeInput", func(b *testing.B) {
 		tenMillion := 10_000_000
-		input := generateLargeTestInput(tenMillion)
+		input := generateInput(tenMillion)
 		for i := 0; i < b.N; i++ {
 			_, err := countWords(input)
 			if err != nil {
@@ -70,7 +91,7 @@ func TestCountWords(t *testing.T) {
 
 func FuzzCountWords(f *testing.F) {
 	tenMillion := 10_000_000
-	f.Add(generateLargeTestInput(tenMillion))
+	f.Add(generateInput(tenMillion))
 	f.Fuzz(func(t *testing.T, input []byte) {
 		count, err := countWords(input)
 		if err != nil {
@@ -82,7 +103,7 @@ func FuzzCountWords(f *testing.F) {
 	})
 }
 
-func generateLargeTestInput(wordCount int) []byte {
+func generateInput(wordCount int) []byte {
 	var result []byte
 	words := []string{"However", "to", "an", "extent", "NFC", "has", "always", "been",
 		"optional", "technology", "rather", "than", "an", "essential"}
@@ -92,4 +113,21 @@ func generateLargeTestInput(wordCount int) []byte {
 		result = append(result, ' ') // add whitespaces
 	}
 	return result
+}
+
+func generateTextFile(filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Write the data to the file
+	data := generateInput(10_000_000)
+	_, err = file.WriteString(string(data))
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

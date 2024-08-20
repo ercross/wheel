@@ -8,18 +8,6 @@ import (
 
 var errInvalidInput = fmt.Errorf("input contains non-utf8 encoded character")
 
-type output struct {
-	WordCount      int
-	LineCount      int
-	CharacterCount int
-	ByteCount      int
-}
-
-func executeBasedOnFileSize() {
-	// todo: for large filesize, you can't keep all the bytes in memory at once
-	// so have a limit, say if file is greater than 250mb, load bytes in chunks
-}
-
 // countWords counts the number of words in a slice of bytes,
 // where a word is defined as sequences of characters delimited by whitespace.
 //

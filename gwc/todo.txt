@@ -1,0 +1,4 @@
+- create help file to handle -h flag
+- handle allowed files (documents only e.g., pdf, docx, doc, txt)
+- handle for read-in-chunks for big files
+- use concurrency for multiple files

@@ -15,9 +15,9 @@ import (
 )
 
 func main() {
-	testFile := "./measurements.txt"
 	starts := time.Now()
-	err := generateTestFile(testFile, "weather_stations.csv")
+	oneBillion := 1_000_000_000
+	err := generateTestFile("./measurements.txt", "weather_stations.csv", oneBillion)
 	if err != nil {
 		panic(err)
 	}

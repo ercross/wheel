@@ -25,4 +25,9 @@ go.work.sum
 .env
 .idea
 gwc/test-file.txt
+
+#onebrc
 onebrc/measurements.txt
+onebrc/cpu.prof
+onebrc/onebrc.test
+onebrc/test.txt

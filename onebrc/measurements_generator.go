@@ -25,39 +25,29 @@ import (
 //   - Temperature value: non-null double between -99.9 (inclusive) and 99.9 (inclusive),
 //     always with one fractional digit
 //   - There is a maximum of 10,000 unique station names.
-func generateTestFile(filename string, fromFilename string) error {
+func generateTestFile(filename string, fromFilename string, totalRowsNeeded int) error {
 	stations, err := uniqueStationNames(10_000, fromFilename)
 	if err != nil {
 		return err
 	}
 
-	_ = os.Remove(filename)
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return fmt.Errorf("error opening file: %v", err)
-	}
-	defer file.Close()
-
-	mu := new(sync.Mutex)
-	ch := make(chan string, 10)
-	wg := new(sync.WaitGroup)
-
-	numberOfWriters := 20
+	measurementChan := make(chan string, 10)
 	ctx, cancel := context.WithCancel(context.Background())
-	for i := 0; i < numberOfWriters; i++ {
-		go writeMeasurements(ch, mu, ctx, file)
-	}
 
+	go writeMeasurements(measurementChan, ctx, filename)
+
+	wg := new(sync.WaitGroup)
 	numberOfGenerators := runtime.GOMAXPROCS(runtime.NumCPU())
-	totalRowsNeeded := 1_000_000_000
 	rowsPerRoutine := totalRowsNeeded / numberOfGenerators
 	for i := 0; i < numberOfGenerators; i++ {
 		wg.Add(1)
-		go generateStationTemperature(ch, wg, rowsPerRoutine, stations)
+		go generateStationTemperature(measurementChan, wg, rowsPerRoutine, stations)
 	}
 
 	wg.Wait()
+	time.Sleep(500 * time.Millisecond)
 	cancel()
+	close(measurementChan)
 	return nil
 }
 
@@ -82,24 +72,36 @@ func generateStationTemperature(ch chan string, wg *sync.WaitGroup, rows int, st
 
 }
 
-func writeMeasurements(ch chan string, mu *sync.Mutex, ctx context.Context, file *os.File) {
+func writeMeasurements(ch chan string, ctx context.Context, filename string) {
+	_ = os.Remove(filename)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		panic(fmt.Errorf("error opening file: %v", err))
+	}
+	defer file.Close()
 
+	writer := bufio.NewWriter(file)
 	var builder strings.Builder
 	var receivedCount int
-	for {
-		if receivedCount == 100 {
-			mu.Lock()
-			writer := bufio.NewWriter(file)
-			_, err := writer.WriteString(builder.String())
-			if err != nil {
-				fmt.Println("Error writing to file:", err)
-			}
+	mu := new(sync.Mutex)
 
+	for {
+		if receivedCount == 10000 {
+			input := strings.Clone(builder.String())
+			go func() {
+				mu.Lock()
+				_, err = writer.WriteString(input)
+				if err != nil {
+					panic(fmt.Errorf("error writing to file: %w", err))
+				}
+				mu.Unlock()
+
+				writer.Flush()
+			}()
 			receivedCount = 0
 			builder.Reset()
-			writer.Flush()
-			mu.Unlock()
 		}
+
 		select {
 		case msg := <-ch:
 			builder.WriteString(msg)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"slices"
 	"strconv"
@@ -16,92 +17,194 @@ import (
 
 func main() {
 	starts := time.Now()
-	oneBillion := 1_000_000_000
-	err := generateTestFile("./measurements.txt", "weather_stations.csv", oneBillion)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Generation took:", time.Since(starts))
+	run()
+	fmt.Printf("Took %v to complete", time.Since(starts))
 }
 
-type aggregate struct {
+func run() {
+	lineChan := make(chan string, 100)
+	stationStatsChan := make(chan stationStats, 30)
+	chunkChan := make(chan map[string][]float32, 100)
 
-	// if all data from the 1 billion row is loaded into stationTemp,
-	// it is expected to grow up to a size of 40GiB at most
-	//
-	// string storage: up to 108bytes (i.e., string-header:8bytes data:100bytes)
-	// float32 storage: data consumes 4bytes
-	// []float32 slice header: 24bytes (i.e., 8bytes each for pointers to data, length, and capacity)
-	// key memory: 108bytes * 10,000 unique station names = 1,080,000bytes (1.08MB)
-	// An entry of value consumes: 1 million of (float32) + 24bytes(slice-header) = (1,000,000 * 4) + 24 = 4,000,024 bytes
-	// Total memory consumption for 10,000 unique station names: 4,000,024 * 10,000 = 40,000,240,000 bytes = 40GiB
-	// Max total memory consumption: 1.08MB + 40GiB = 40.00108 GB
-	stationTemp map[string][]float32
-	mu          *sync.RWMutex
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go processChunk(chunkChan, stationStatsChan, wg)
+
+	wg.Add(1)
+	go aggregateResult(lineChan, chunkChan, wg)
+
+	wg.Add(1)
+	go mergeResult(stationStatsChan, wg)
+
+	wg.Add(1)
+	go readMeasurements("test.txt", lineChan, wg)
+
+	wg.Wait()
 }
 
-func bufferReadFileStreamInput(filename string) (err error) {
-	a := aggregate{
-		// if there are 10,000 unique station names,
-		// the average of it is 5000 for an initial capacity
-		stationTemp: make(map[string][]float32, 5000),
-		mu:          nil,
-	}
+type stats struct {
+	mean float32
+	min  float32
+	max  float32
+}
 
+type stationStats struct {
+	station string
+	stats   stats
+}
+
+func readMeasurements(filename string, lineChan chan string, wg *sync.WaitGroup) {
+	defer wg.Done()
 	file, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("error opening file: %v", err)
+		panic(fmt.Errorf("error opening file: %v", err))
 	}
 	defer file.Close()
 
 	reader := bufio.NewReader(file)
-	var chunk string
+	var line string
+
+	for {
+		line, err = reader.ReadString('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				close(lineChan)
+				break
+			}
+			fmt.Printf("error reading file: %v", err)
+			continue
+		}
+
+		lineChan <- line
+	}
+}
+
+func aggregateResult(lineChan chan string, chunkChan chan map[string][]float32, wg *sync.WaitGroup) {
+	defer wg.Done()
+	var (
+		parts     []string
+		temp      float64
+		err       error
+		lineCount int
+		ok        bool
+		line      string
+	)
+	maxChunkSize := 1000
+	chunk := make(map[string][]float32, maxChunkSize)
+
 	for {
 
-		// todo try use bufio.Scanner
-		chunk, err = reader.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("error reading file: %v", err)
+		line, ok = <-lineChan
+		if !ok {
+			close(chunkChan)
+			break
 		}
-		parts := strings.Split(chunk, ";")
-		temp, _ := strconv.ParseFloat(parts[1], 32)
-		a.aggregateResult(parts[0], float32(temp))
+
+		if lineCount == maxChunkSize {
+			chunkChan <- maps.Clone(chunk)
+			clear(chunk)
+			continue
+		}
+
+		// parse line
+		line = strings.ReplaceAll(line, "\n", "")
+		parts = strings.Split(line, ";")
+		if len(parts) != 2 {
+			// drop invalid lines
+			fmt.Printf("invalid measurement entry: %s", line)
+			continue
+		}
+		temp, err = strconv.ParseFloat(parts[1], 32)
+		if err != nil {
+			// drop lines with invalid temperatures
+			fmt.Printf("error parsing temperature value %s: %v", parts[1], err)
+			continue
+		}
+
+		// insert new measurement
+		temps, ok := chunk[parts[0]]
+		if !ok {
+			chunk[parts[0]] = []float32{float32(temp)}
+		} else {
+			chunk[parts[0]] = append(temps, float32(temp))
+		}
+
+		lineCount++
+	}
+
+}
+
+func processChunk(chunkChan chan map[string][]float32, stationStatsChan chan stationStats, wg *sync.WaitGroup) {
+	defer wg.Done()
+	var chunk map[string][]float32
+	var ok bool
+	for {
+		chunk, ok = <-chunkChan
+		if !ok {
+			close(stationStatsChan)
+			break
+		}
+		for stationName, temperatures := range chunk {
+			slices.SortFunc(temperatures, func(a, b float32) int {
+				return cmp.Compare(a, b)
+			})
+			chunk[stationName] = temperatures
+
+			stationStatsChan <- stationStats{
+				station: stationName,
+				stats: stats{
+					mean: calculateMean(temperatures),
+					min:  findMin(temperatures),
+					max:  findMax(temperatures),
+				},
+			}
+		}
 	}
 }
 
-func (a *aggregate) aggregateResult(stationName string, temp float32) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func mergeResult(stationStatsChan chan stationStats, wg *sync.WaitGroup) {
+	defer wg.Done()
+	result := make(map[string]stats)
+	var stationStat stationStats
+	var ok bool
+	for {
+		stationStat, ok = <-stationStatsChan
+		if !ok {
+			break
+		}
+		result[stationStat.station] = newStat(result[stationStat.station], stationStat.stats)
 
-	v, ok := a.stationTemp[stationName]
-	if !ok {
+	}
+	writeResult("result.txt", result)
+}
 
-		// for one billion rows and a maximum of 10,000 unique station names,
-		// each station name can appear in an average of 1,000,000 rows
-		a.stationTemp[stationName] = make([]float32, 0, 600_000)
-		a.stationTemp[stationName] = append(a.stationTemp[stationName], temp)
-	} else {
-		a.stationTemp[stationName] = append(v, temp)
+func newStat(s1, s2 stats) stats {
+	return stats{
+		mean: calculateMean([]float32{s1.mean, s2.mean}),
+		min:  findMin([]float32{s1.min, s2.min}),
+		max:  findMax([]float32{s1.max, s2.max}),
 	}
 }
 
-func (a *aggregate) calculateResult() string {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+func writeResult(filename string, result map[string]stats) {
+	_ = os.Remove(filename)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(fmt.Errorf("error opening file: %v", err))
+	}
+	defer file.Close()
 
 	var builder strings.Builder
-	for k, v := range a.stationTemp {
-
-		slices.SortFunc(v, func(a, b float32) int {
-			return cmp.Compare(a, b)
-		})
-
-		mean := calculateMean(v)
-		median := calculateMedian(v)
-		builder.WriteString(fmt.Sprintf("%s;%f;%f;%f\n", k, mean, median, v[(len(v)-1)]))
+	for k, v := range result {
+		builder.WriteString(fmt.Sprintf("%s;%f;%f;%f\n", k, v.min, v.mean, v.max))
 	}
 
-	return builder.String()
+	writer := bufio.NewWriter(file)
+	_, _ = writer.WriteString(builder.String())
+}
+
+func findMax(temps []float32) float32 {
+	return temps[(len(temps) - 1)]
 }
 
 func calculateMean(temps []float32) float32 {
@@ -113,15 +216,6 @@ func calculateMean(temps []float32) float32 {
 	return total / float32(len(temps))
 }
 
-func calculateMedian(temps []float32) float32 {
-	// Calculate the middle index
-	middleIndex := len(temps) / 2
-
-	// If the length is odd, return the middle value
-	if len(temps)%2 != 0 {
-		return temps[middleIndex]
-	}
-
-	// If the length is even, return the average of the two middle values
-	return (temps[middleIndex-1] + temps[middleIndex]) / 2
+func findMin(temps []float32) float32 {
+	return temps[0]
 }

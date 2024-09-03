@@ -1,4 +1,8 @@
 ## Commit History links (help)
+1. [Initial commit](https://github.com/ercross/wheel/commit/60585fc4ec724f91b01059c878e95c1e5af7da7d)
+2. [Initial test file generator implementation](https://github.com/ercross/wheel/commit/0ab8c453cb8ff55b04553bd549db498025daf083)
+3. [Optimized cpu-time for test file generator by 40%](https://github.com/ercross/wheel/commit/6e4d622c8ef169dc988fc3575ec201a1089f1948)
+4. [Row reader initial implementation](https://github.com/ercross/wheel/commit/47898660878d8355bcdb1880362d0ff2c70360a8)
 
 ## Implementation Details
 
